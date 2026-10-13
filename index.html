@@ -29,14 +29,17 @@
       <section id="guestPanel" hidden>
         <div class="room-heading"><div><p class="kicker">ESTÁS EN LA SALA</p><h1 id="roomName">TAXI DJ</h1><span class="code-label" id="codeLabel"></span></div><span class="live-pill">● EN VIVO</span></div>
         <div class="timer panel"><span class="timer-dot">◷</span><div><small>TIEMPO RESTANTE</small><strong id="remaining">--:--</strong></div><button id="leaveButton" class="ghost small">Salir</button></div>
-        <div class="panel now"><p class="kicker">♫ SONANDO AHORA</p><h2 id="currentSong">El conductor aún no ha iniciado la música</h2><p id="currentDetail" class="muted"></p></div>
-        <div class="panel"><h2>Solicita una canción</h2><p class="muted">Busca en YouTube, copia el enlace y agrégalo aquí.</p>
-          <div class="searchrow"><input id="searchText" placeholder="Nombre de canción o artista" maxlength="100"><button id="searchButton" class="ghost">Buscar ↗</button></div>
-          <form id="songForm" class="form compact">
-            <label for="songUrl">Enlace de YouTube</label><input id="songUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required>
-            <label for="songTitle">Nombre de la canción</label><input id="songTitle" placeholder="Canción — artista" maxlength="100" required>
-            <button id="addSongButton" class="primary">+ Agregar a la cola</button>
-          </form>
+        <div class="panel now"><p class="kicker">♫ REPRODUCTOR COMPARTIDO · SUENA EN EL TAXI</p>
+          <div class="player-card"><img id="cover" class="cover" alt="Portada del video actual" hidden><div class="song-meta"><h2 id="currentSong">El conductor aún no ha iniciado la música</h2><p id="currentDetail" class="muted"></p></div></div>
+          <div class="controls"><button id="pauseResume" class="ghost" type="button">⏸ Pausar</button><button id="skipTrack" class="ghost" type="button">⏭ Siguiente</button></div>
+          <p class="hint left">Este es un control remoto: la música suena únicamente en el teléfono del conductor. El video de YouTube permanece visible en el APK.</p></div>
+        <div class="panel"><h2>Busca tu canción</h2><p class="muted">Encuentra una canción y pulsa ▶ para solicitar que suene en el carro o + para dejarla en espera.</p>
+          <div class="searchrow"><input id="searchText" placeholder="Canción o artista" maxlength="100"><button id="searchButton" class="primary" type="button">Buscar</button></div>
+          <div id="searchResults" class="song-list"><p class="muted">Escribe lo que quieres escuchar y pulsa Buscar.</p></div>
+          <p class="hint left">La búsqueda utiliza YouTube Data API. Algunas canciones pueden tener restricciones de reproducción.</p>
+          <details class="backup"><summary>¿No funciona la búsqueda? Agregar mediante enlace</summary>
+           <form id="manualSongForm" class="form compact"><label for="manualUrl">URL de YouTube</label><input id="manualUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required><label for="manualTitle">Título</label><input id="manualTitle" maxlength="100" required><button class="ghost" type="submit">+ Agregar a la cola</button></form>
+          </details>
         </div>
         <div class="panel"><div class="section-line"><h2>Próximas canciones</h2><span id="queueCount" class="muted">0</span></div><div id="songList" class="song-list"><p class="muted">La cola está vacía.</p></div></div>
       </section>
