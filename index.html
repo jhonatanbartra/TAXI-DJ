@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121b2e">
+  <meta name="description" content="TAXI DJ: pide canciones durante tu viaje.">
+  <title>TAXI DJ · Tu música en el camino</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell guest-shell">
+    <header class="top"><div class="logo"><span class="logo-icon">♫</span><span>TAXI <b>DJ</b></span></div><span class="eyebrow">MÚSICA PARA TU VIAJE</span></header>
+    <main>
+      <section id="entry" class="intro">
+        <div class="orb">♫</div>
+        <p class="kicker">BIENVENIDO A BORDO</p>
+        <h1>Tu viaje.<br><em>Tu música.</em></h1>
+        <p class="muted center">Únete a la sala de tu conductor y solicita tus canciones favoritas.</p>
+        <form id="joinForm" class="panel form">
+          <label for="nickname">Tu nombre</label>
+          <input id="nickname" maxlength="28" placeholder="Ej. Valeria" required autocomplete="nickname">
+          <label for="roomCode">Código de sala</label>
+          <input id="roomCode" maxlength="8" placeholder="8 letras o números" required autocomplete="off" autocapitalize="characters" class="room-input">
+          <button id="joinButton" type="submit" class="primary">Entrar a la sala <span>→</span></button>
+          <p class="hint">Sin descargas y sin registrarte.</p>
+        </form>
+      </section>
+      <section id="guestPanel" hidden>
+        <div class="room-heading"><div><p class="kicker">ESTÁS EN LA SALA</p><h1 id="roomName">TAXI DJ</h1><span class="code-label" id="codeLabel"></span></div><span class="live-pill">● EN VIVO</span></div>
+        <div class="timer panel"><span class="timer-dot">◷</span><div><small>TIEMPO RESTANTE</small><strong id="remaining">--:--</strong></div><button id="leaveButton" class="ghost small">Salir</button></div>
+        <div class="panel now"><p class="kicker">♫ SONANDO AHORA</p><h2 id="currentSong">El conductor aún no ha iniciado la música</h2><p id="currentDetail" class="muted"></p></div>
+        <div class="panel"><h2>Solicita una canción</h2><p class="muted">Busca en YouTube, copia el enlace y agrégalo aquí.</p>
+          <div class="searchrow"><input id="searchText" placeholder="Nombre de canción o artista" maxlength="100"><button id="searchButton" class="ghost">Buscar ↗</button></div>
+          <form id="songForm" class="form compact">
+            <label for="songUrl">Enlace de YouTube</label><input id="songUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required>
+            <label for="songTitle">Nombre de la canción</label><input id="songTitle" placeholder="Canción — artista" maxlength="100" required>
+            <button id="addSongButton" class="primary">+ Agregar a la cola</button>
+          </form>
+        </div>
+        <div class="panel"><div class="section-line"><h2>Próximas canciones</h2><span id="queueCount" class="muted">0</span></div><div id="songList" class="song-list"><p class="muted">La cola está vacía.</p></div></div>
+      </section>
+      <section id="ended" class="intro" hidden><div class="orb">✓</div><h1 id="endedTitle">Tu sesión terminó</h1><p id="endedMessage" class="muted center">Gracias por viajar con TAXI DJ.</p><button id="restartButton" class="primary">Volver al inicio</button></section>
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    </main>
+    <footer>Hecho para compartir música, no para distraer al conductor.</footer>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
