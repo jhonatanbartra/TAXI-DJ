@@ -3,50 +3,81 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#121b2e">
-  <meta name="description" content="TAXI DJ: pide canciones durante tu viaje.">
-  <title>TAXI DJ · Tu música en el camino</title>
+  <meta name="theme-color" content="#eef0f4">
+  <meta name="description" content="TAXI DJ: pide música desde tu asiento.">
+  <title>TAXI DJ · Música compartida</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="shell guest-shell">
-    <header class="top"><div class="logo"><span class="logo-icon">♫</span><span>TAXI <b>DJ</b></span></div><span class="eyebrow">MÚSICA PARA TU VIAJE</span></header>
+    <header class="top" aria-label="TAXI DJ">
+      <div class="logo"><span class="logo-icon" aria-hidden="true">♫</span> TAXI <b>DJ</b></div>
+      <span class="trip-tag">MÚSICA PARA TU VIAJE</span>
+    </header>
     <main>
-      <section id="entry" class="intro">
-        <div class="orb">♫</div>
-        <p class="kicker">BIENVENIDO A BORDO</p>
-        <h1>Tu viaje.<br><em>Tu música.</em></h1>
-        <p class="muted center">Únete a la sala de tu conductor y solicita tus canciones favoritas.</p>
-        <form id="joinForm" class="panel form">
-          <label for="nickname">Tu nombre</label>
-          <input id="nickname" maxlength="28" placeholder="Ej. Valeria" required autocomplete="nickname">
-          <label for="roomCode">Código de sala</label>
-          <input id="roomCode" maxlength="8" placeholder="8 letras o números" required autocomplete="off" autocapitalize="characters" class="room-input">
-          <button id="joinButton" type="submit" class="primary">Entrar a la sala <span>→</span></button>
-          <p class="hint">Sin descargas y sin registrarte.</p>
-        </form>
+      <section id="entry" class="intro" aria-live="polite">
+        <div class="loading-disc" aria-hidden="true">♫</div>
+        <h1>Conectando con tu taxi…</h1>
+        <p id="entryMessage" class="muted center">Estamos preparando tu sala de música.</p>
+        <button id="retryButton" class="secondary" type="button" hidden>Reintentar conexión</button>
       </section>
+
       <section id="guestPanel" hidden>
-        <div class="room-heading"><div><p class="kicker">ESTÁS EN LA SALA</p><h1 id="roomName">TAXI DJ</h1><span class="code-label" id="codeLabel"></span></div><span class="live-pill">● EN VIVO</span></div>
-        <div class="timer panel"><span class="timer-dot">◷</span><div><small>TIEMPO RESTANTE</small><strong id="remaining">--:--</strong></div><button id="leaveButton" class="ghost small">Salir</button></div>
-        <div class="panel now"><p class="kicker">♫ REPRODUCTOR COMPARTIDO · SUENA EN EL TAXI</p>
-          <div class="player-card"><img id="cover" class="cover" alt="Portada del video actual" hidden><div class="song-meta"><h2 id="currentSong">El conductor aún no ha iniciado la música</h2><p id="currentDetail" class="muted"></p></div></div>
-          <div class="controls"><button id="pauseResume" class="ghost" type="button">⏸ Pausar</button><button id="skipTrack" class="ghost" type="button">⏭ Votar para saltar</button></div><p class="hint left" id="voteProgress" aria-live="polite"></p>
-          <p class="hint left">Este es un control remoto: la música suena únicamente en el teléfono del conductor. El video de YouTube permanece visible en el APK.</p></div>
-        <div class="panel"><h2>Busca tu canción</h2><p class="muted">Encuentra una canción y pulsa ▶ para solicitar que suene en el carro o + para dejarla en espera.</p>
-          <div class="searchrow"><input id="searchText" placeholder="Canción o artista" maxlength="100"><button id="searchButton" class="primary" type="button">Buscar</button></div>
-          <div id="searchResults" class="song-list"><p class="muted">Escribe lo que quieres escuchar y pulsa Buscar.</p></div>
-          <p class="hint left">La búsqueda utiliza YouTube Data API. Algunas canciones pueden tener restricciones de reproducción.</p>
-          <details class="backup"><summary>¿No funciona la búsqueda? Agregar mediante enlace</summary>
-           <form id="manualSongForm" class="form compact"><label for="manualUrl">URL de YouTube</label><input id="manualUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required><label for="manualTitle">Título</label><input id="manualTitle" maxlength="100" required><button class="ghost" type="submit">+ Agregar a la cola</button></form>
-          </details>
+        <div class="session-strip">
+          <span class="status"><span class="live-dot" aria-hidden="true"></span><span id="roomName">TAXI DJ</span></span>
+          <div class="session-right"><span class="time-left" title="Tiempo restante">◷ <span id="remaining">--:--</span></span><button id="leaveButton" type="button" class="quiet-button">Salir</button></div>
         </div>
-        <div class="panel"><div class="section-line"><h2>Próximas canciones</h2><span id="queueCount" class="muted">0</span></div><div id="songList" class="song-list"><p class="muted">La cola está vacía.</p></div></div>
+
+        <section class="player" aria-label="Reproductor del taxi">
+          <div class="playing-info">
+            <div class="artwork-wrap"><img id="cover" class="cover" alt="Miniatura de YouTube" hidden><span id="coverPlaceholder" class="artwork-placeholder" aria-hidden="true">♫</span></div>
+            <div class="track-info">
+              <span class="overline">REPRODUCIENDO EN EL TAXI</span>
+              <h1 id="currentSong">Esperando la primera canción</h1>
+              <p id="currentDetail" class="artist">Tu música comienza aquí</p>
+              <div class="progress-track" role="img" aria-label="El tiempo exacto de reproducción no está disponible todavía"><span></span></div>
+              <div class="progress-times"><span>--:--</span><span>--:--</span></div>
+            </div>
+          </div>
+          <div class="transport-controls">
+            <button class="transport" type="button" disabled title="La canción anterior solo puede controlarla el conductor" aria-label="Anterior (solo conductor)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M19 5 8 12l11 7z"/></svg>
+            </button>
+            <button id="pauseResume" class="transport play-button" type="button" disabled aria-label="Pausar o reanudar">❚❚</button>
+            <button id="skipTrack" class="transport" type="button" disabled title="Siguiente canción o voto para saltar" aria-label="Siguiente canción o votar para saltar">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v14M5 5l11 7-11 7z"/></svg>
+            </button>
+          </div>
+          <p id="voteProgress" class="vote-progress" aria-live="polite"></p>
+        </section>
+
+        <section class="search-section" aria-label="Agregar temas">
+          <button id="showSearch" type="button" class="search-launch" aria-expanded="false" aria-controls="searchPanel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 5 5"/></svg><span>Agregar temas</span><span class="search-plus" aria-hidden="true">+</span></button>
+          <div id="searchPanel" class="search-panel" hidden>
+            <div class="searchrow"><input id="searchText" placeholder="Busca una canción o artista" maxlength="100" aria-label="Buscar canción o artista"><button id="searchButton" class="primary" type="button">Buscar</button></div>
+            <div id="searchResults" class="song-list search-results"><p class="muted">Busca música y agrégala a la cola.</p></div>
+            <details class="backup"><summary>Agregar canción mediante enlace</summary>
+              <form id="manualSongForm" class="form compact"><label for="manualUrl">Enlace de YouTube</label><input id="manualUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required><label for="manualTitle">Título</label><input id="manualTitle" maxlength="100" required><button class="secondary" type="submit">+ Agregar a la cola</button></form>
+            </details>
+          </div>
+        </section>
+
+        <section class="queue-section" aria-labelledby="queueTitle">
+          <div class="section-line"><h2 id="queueTitle">En cola</h2><span id="queueCount" class="queue-counter">0 en espera</span></div>
+          <div id="songList" class="queue-list"><p class="muted empty">La cola está vacía.</p></div>
+        </section>
+        <p class="passenger-footnote">La música suena en el teléfono del conductor. Las funciones disponibles dependen de sus permisos.</p>
       </section>
-      <section id="ended" class="intro" hidden><div class="orb">✓</div><h1 id="endedTitle">Tu sesión terminó</h1><p id="endedMessage" class="muted center">Gracias por viajar con TAXI DJ.</p><button id="restartButton" class="primary">Volver al inicio</button></section>
+
+      <section id="ended" class="intro" hidden>
+        <div class="loading-disc ended-disc" aria-hidden="true">✓</div>
+        <h1 id="endedTitle">Tu sesión terminó</h1>
+        <p id="endedMessage" class="muted center">Gracias por viajar con TAXI DJ.</p>
+        <button id="restartButton" class="primary" type="button">Intentar volver a entrar</button>
+      </section>
       <div id="notice" class="notice" role="status" aria-live="polite"></div>
     </main>
-    <footer>Hecho para compartir música, no para distraer al conductor.</footer>
+    <footer>TAXI DJ · Música compartida durante tu viaje</footer>
   </div>
   <script type="module" src="app.js"></script>
 </body>

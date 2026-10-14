@@ -5,51 +5,400 @@ import { firebaseConfig, isConfigured } from './firebase-config.js';
 import { youtubeApiKey, youtubeReady } from './youtube-config.js';
 
 const $ = id => document.getElementById(id);
-const state = { auth:null, db:null, roomId:null, room:null, guest:null, uid:null, unsubs:[], songs:[], clock:null };
+const state = {
+  auth: null, db: null, uid: null, roomId: null, room: null, guest: null,
+  unsubs: [], songs: [], clock: null, joining: false, connected: false, ended: false
+};
 let toastTimer;
-function toast(message){const el=$('notice');el.textContent=message;el.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('visible'),4500)}
-function fail(e){console.error(e);toast(e?.code==='permission-denied'?'Sin permisos o sesión vencida.':(e?.message||'No se pudo completar la acción.'))}
-function show(id){for(const name of ['entry','guestPanel','ended'])$(name).hidden=name!==id}
-function cleanup(){state.unsubs.forEach(f=>f());state.unsubs=[];clearInterval(state.clock);state.guest=null;state.room=null;state.songs=[]}
-function videoIdFrom(input){try{const u=new URL(input.trim());const h=u.hostname.replace(/^www\./,'').toLowerCase();let id=null;if(h==='youtu.be') id=u.pathname.slice(1).split('/')[0];if(['youtube.com','m.youtube.com','music.youtube.com'].includes(h)){if(u.pathname==='/watch') id=u.searchParams.get('v');if(u.pathname.startsWith('/shorts/')||u.pathname.startsWith('/embed/')) id=u.pathname.split('/')[2]}return /^[a-zA-Z0-9_-]{11}$/.test(id||'')?id:null}catch{return null}}
-function checkValid(){const g=state.guest,room=state.room;if(!g||!room||!room.active||g.blocked||g.left)return false;if(!g.joinedAt)return true;return g.minutes===0 || Date.now() < g.joinedAt.toMillis()+(g.minutes+g.extraMinutes)*60000}
-function endSession(title,message){cleanup();show('ended');$('endedTitle').textContent=title;$('endedMessage').textContent=message}
-function tick(){const g=state.guest,room=state.room;if(!g||!room)return;if(!room.active)return endSession('La sala ha cerrado','Gracias por acompañarnos.');if(g.blocked||g.left)return endSession('Tu acceso ha finalizado','El conductor cerró tu sesión.');if(!g.joinedAt){$('remaining').textContent='Conectando…';return}if(g.minutes===0){$('remaining').textContent='Sin límite';return}const remaining=g.joinedAt.toMillis()+(g.minutes+g.extraMinutes)*60000-Date.now();if(remaining<=0){endSession('Se terminó tu tiempo','Gracias por disfrutar TAXI DJ.');return}const secs=Math.ceil(remaining/1000);$('remaining').textContent=`${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`}
-function makeSong(title,artist){const row=document.createElement('div');row.className='song';const icon=document.createElement('span');icon.className='song-icon';icon.textContent='♫';const meta=document.createElement('div');meta.className='song-meta';const strong=document.createElement('strong');strong.textContent=title;const small=document.createElement('small');small.textContent=artist;meta.append(strong,small);row.append(icon,meta);return row}
-function renderSongs(){const list=$('songList');list.replaceChildren();const queued=state.songs.filter(s=>s.status==='queued');$('queueCount').textContent=String(queued.length);if(!queued.length){const p=document.createElement('p');p.className='muted';p.textContent='Todavía no hay canciones en espera.';list.append(p)}else queued.forEach(s=>list.append(makeSong(s.title,`Solicitada por ${s.addedByName}`)))}
-function displayRoom(){if(!state.room)return;$('roomName').textContent=state.room.title||'TAXI DJ';$('codeLabel').textContent=`SALA ${state.roomId}`;$('currentSong').textContent=state.room.currentTitle||'Esperando la primera canción';$('currentDetail').textContent=state.room.currentVideoId?(state.room.isPaused?'EN PAUSA · Control remoto':'Suena por los parlantes del taxi'):'¡Sé el primero en pedir música!';$('pauseResume').disabled=!checkValid()||state.room.allowGuestControls!==true; $('skipTrack').disabled=!checkValid()||(!(state.room.allowGuestVotes===true)&&state.room.allowGuestControls!==true);$('skipTrack').textContent=state.room.allowGuestVotes===true?'⏭ Votar para saltar':'⏭ Siguiente';$('voteProgress').textContent=state.room.allowGuestVotes===true?`Votos: ${state.room.skipVoteCount||0}/${state.room.skipVoteThreshold||1}`:''; $('pauseResume').textContent=state.room.isPaused?'▶ Reanudar':'⏸ Pausar'; const v=state.room.currentVideoId; $('cover').hidden=!v;if(v)$('cover').src=`https://i.ytimg.com/vi/${v}/mqdefault.jpg`;tick()}
-async function join(e){e.preventDefault();if(!state.uid)return toast('Todavía estamos conectando…');const roomId=$('roomCode').value.trim().toUpperCase();const name=$('nickname').value.trim();if(!/^[A-Z2-9]{8}$/.test(roomId))return toast('Ingresa el código de 8 caracteres.');if(name.length<2)return toast('Escribe tu nombre (mínimo 2 letras).');$('joinButton').disabled=true;try{
- const ref=doc(state.db,'rooms',roomId);const snap=await getDoc(ref);if(!snap.exists()||!snap.data().active)throw new Error('Esta sala no existe o ya cerró.');
- const guestRef=doc(state.db,'rooms',roomId,'guests',state.uid);const old=await getDoc(guestRef);
- if(!old.exists())await setDoc(guestRef,{uid:state.uid,displayName:name,joinedAt:serverTimestamp(),minutes:snap.data().defaultMinutes,extraMinutes:0,blocked:false,left:false});
- else if(old.data().blocked||old.data().left|| (old.data().minutes!==0 && old.data().joinedAt && Date.now()>=old.data().joinedAt.toMillis()+(old.data().minutes+old.data().extraMinutes)*60000))throw new Error('Tu sesión ya terminó. Pide al conductor una nueva invitación.');
- cleanup();state.roomId=roomId;state.room=snap.data();$('nickname').value=name;
- state.unsubs.push(onSnapshot(ref,s=>{if(!s.exists())return endSession('Sala no disponible','El conductor cerró esta sala.');state.room=s.data();displayRoom()},fail));
- state.unsubs.push(onSnapshot(guestRef,s=>{if(!s.exists())return endSession('Sesión finalizada','Consulta al conductor.');state.guest=s.data();displayRoom()},fail));
- state.unsubs.push(onSnapshot(query(collection(state.db,'rooms',roomId,'songs'),orderBy('createdAt','asc')),s=>{state.songs=s.docs.map(d=>({id:d.id,...d.data()}));renderSongs()},fail));
- state.clock=setInterval(tick,1000);show('guestPanel');displayRoom();
- }catch(err){fail(err)}finally{$('joinButton').disabled=false}}
-function createRow(video, onPlay, onAdd){
- const row=document.createElement('div');row.className='song';const img=document.createElement('img');img.className='result-cover';img.alt='Miniatura de YouTube';img.src=`https://i.ytimg.com/vi/${video.videoId}/mqdefault.jpg`;
- const meta=document.createElement('div');meta.className='song-meta';const name=document.createElement('strong');name.textContent=video.title;meta.append(name);
- const actions=document.createElement('div');actions.className='result-actions';const b1=document.createElement('button');b1.className='primary small';b1.textContent='▶ Play';b1.addEventListener('click',()=>onPlay(video).catch(fail));const b2=document.createElement('button');b2.className='ghost small';b2.textContent='+ Cola';b2.addEventListener('click',()=>onAdd(video).catch(fail));actions.append(b1,b2);row.append(img,meta,actions);return row;
+
+function toast(message) {
+  const el = $('notice');
+  el.textContent = message;
+  el.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('visible'), 4500);
 }
-async function searchYouTube(){const q=$('searchText').value.trim();if(q.length<2)return toast('Escribe el nombre de una canción.');if(!youtubeReady)return toast('Falta configurar la API de YouTube en youtube-config.js.');const target=$('searchResults');target.replaceChildren(makeSong('Buscando en YouTube…',''));
- const api=new URL('https://www.googleapis.com/youtube/v3/search');api.searchParams.set('part','snippet');api.searchParams.set('type','video');api.searchParams.set('videoEmbeddable','true');api.searchParams.set('maxResults','8');api.searchParams.set('q',q);api.searchParams.set('key',youtubeApiKey);
- try{const r=await fetch(api);const data=await r.json();if(!r.ok)throw new Error(data?.error?.message||'Error de búsqueda de YouTube.');target.replaceChildren();for(const item of (data.items||[])){const video={videoId:item.id.videoId,title:item.snippet.title};target.append(createRow(video, v=>requestVideo(v,true),v=>requestVideo(v,false)))}if(!data.items?.length)target.append(makeSong('No encontramos resultados.','Prueba con otra búsqueda.'))}catch(e){fail(e);target.replaceChildren(makeSong('No se pudo buscar.','Revisa la API de YouTube.'))}
+function fail(e) {
+  console.error(e);
+  toast(e?.code === 'permission-denied' ? 'Sin permisos o sesión vencida.' : (e?.message || 'No se pudo completar la acción.'));
 }
-async function guestCommand(action,songId=''){if(!checkValid()||(action==='vote_skip'?state.room?.allowGuestVotes!==true:state.room?.allowGuestControls!==true))throw new Error('El conductor no ha autorizado este control.');await addDoc(collection(state.db,'rooms',state.roomId,'commands'),{action,songId,uid:state.uid,processed:false,createdAt:serverTimestamp()});}
-async function requestVideo(video,playNow){if(!checkValid()||!state.room?.allowRequests)throw new Error('No se permiten solicitudes en este momento.');if(state.room.blockDuplicates!==false&&state.songs.some(s=>s.videoId===video.videoId&&['queued','playing'].includes(s.status)))throw new Error('Esta canción ya está en la cola o reproduciéndose.');const ref=await addDoc(collection(state.db,'rooms',state.roomId,'songs'),{title:video.title.slice(0,100),url:`https://www.youtube.com/watch?v=${video.videoId}`,videoId:video.videoId,addedBy:state.uid,addedByName:state.guest.displayName,status:'queued',createdAt:serverTimestamp()});if(playNow){if(state.room.allowGuestControls!==true){toast('Añadida a la cola. El conductor controla el Play.');return;}await guestCommand('play',ref.id);toast('▶ Solicitaste reproducir en el taxi.')}else toast('♫ Agregada a la cola.');}
-function idFromUrl(raw){try{const u=new URL(raw.trim());const host=u.hostname.replace(/^www\./,'');let id='';if(host==='youtu.be')id=u.pathname.split('/')[1];if(['youtube.com','m.youtube.com','music.youtube.com'].includes(host))id=u.pathname==='/watch'?u.searchParams.get('v'):u.pathname.split('/')[2];return /^[a-zA-Z0-9_-]{11}$/.test(id||'')?id:null}catch{return null}}
-async function manualSong(e){e.preventDefault();const videoId=idFromUrl($('manualUrl').value);if(!videoId)return toast('Enlace inválido.');await requestVideo({videoId,title:$('manualTitle').value.trim()},false);$('manualUrl').value='';$('manualTitle').value=''}
-$('joinForm').addEventListener('submit',join);
-$('manualSongForm').addEventListener('submit',e=>manualSong(e).catch(fail));
-$('searchButton').addEventListener('click',()=>searchYouTube().catch(fail));
-$('searchText').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchYouTube().catch(fail)}});
-$('pauseResume').addEventListener('click',()=>guestCommand(state.room?.isPaused?'resume':'pause').then(()=>toast('Orden enviada al conductor.')).catch(fail));
-$('skipTrack').addEventListener('click',()=>{const vote=state.room?.allowGuestVotes===true;const action=vote?'vote_skip':'next';const track=vote?(state.room?.currentSongId||''):'';if(vote&&!track)return toast('Todavía no hay música sonando.');guestCommand(action,track).then(()=>toast(vote?'Voto enviado. Si se alcanza la mayoría, cambiaremos de canción.':'Siguiente canción solicitada.')).catch(fail)});
-$('leaveButton').addEventListener('click',()=>endSession('Saliste de la sala','Tu tiempo continúa hasta que venza. Puedes volver mientras siga activo.'));
-$('restartButton').addEventListener('click',()=>show('entry'));
-const code=new URLSearchParams(location.search).get('sala');if(code)$('roomCode').value=code.toUpperCase().slice(0,8);
-if(!isConfigured)toast('La aplicación requiere configurar Firebase antes de publicarla.');
-else try{const app=initializeApp(firebaseConfig);state.auth=getAuth(app);state.db=getFirestore(app);onAuthStateChanged(state.auth,async user=>{if(user){state.uid=user.uid;return}try{const r=await signInAnonymously(state.auth);state.uid=r.user.uid}catch(e){fail(e)}})}catch(e){fail(e)}
+function show(id) {
+  for (const section of ['entry', 'guestPanel', 'ended']) $(section).hidden = section !== id;
+}
+function cleanup() {
+  state.unsubs.forEach(unsubscribe => unsubscribe());
+  state.unsubs = [];
+  clearInterval(state.clock);
+  state.clock = null;
+  state.guest = null;
+  state.room = null;
+  state.songs = [];
+  state.connected = false;
+}
+function readRoomFromQr() {
+  const fromUrl = new URLSearchParams(location.search).get('sala');
+  if (fromUrl !== null) {
+    const room = fromUrl.trim().toUpperCase();
+    if (!/^[A-Z2-9]{8}$/.test(room)) return null;
+    // Conservar el código internamente para actualizar la página y reconectarse.
+    // Tras abrir el QR no se muestra el código en la barra de direcciones.
+    try {
+      sessionStorage.setItem('taxidj-passenger-room', room);
+      history.replaceState(null, '', location.pathname + location.hash);
+    } catch { /* Si se bloquea el almacenamiento, el QR original sigue funcionando. */ }
+    return room;
+  }
+  try { return sessionStorage.getItem('taxidj-passenger-room'); }
+  catch { return null; }
+}
+const qrRoom = readRoomFromQr();
+
+// El nombre visible ES fecha y hora de ingreso. Firebase Auth UID es la identidad
+// verdaderamente única y no se muestra. Un pasajero que regresa conserva el nombre.
+function arrivalName() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+}
+function checkValid() {
+  const g = state.guest, room = state.room;
+  if (!g || !room || !room.active || g.blocked || g.left) return false;
+  if (!g.joinedAt) return true;
+  return g.minutes === 0 || Date.now() < g.joinedAt.toMillis() + (g.minutes + (g.extraMinutes || 0)) * 60000;
+}
+function endSession(title, message) {
+  cleanup();
+  state.ended = true;
+  show('ended');
+  $('endedTitle').textContent = title;
+  $('endedMessage').textContent = message;
+}
+function tick() {
+  const guest = state.guest, room = state.room;
+  if (!guest || !room) return;
+  if (!room.active) return endSession('La sala ha cerrado', 'Gracias por acompañarnos.');
+  if (guest.blocked || guest.left) return endSession('Tu acceso ha finalizado', 'El conductor cerró tu sesión.');
+  if (!guest.joinedAt) { $('remaining').textContent = 'Conectando…'; return; }
+  if (guest.minutes === 0) { $('remaining').textContent = 'Sin límite'; return; }
+  const remaining = guest.joinedAt.toMillis() + (guest.minutes + (guest.extraMinutes || 0)) * 60000 - Date.now();
+  if (remaining <= 0) return endSession('Se terminó tu tiempo', 'Gracias por disfrutar TAXI DJ.');
+  const seconds = Math.ceil(remaining / 1000);
+  $('remaining').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+function thumbnail(id) {
+  return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : '';
+}
+function songRow(track, index, playing = false) {
+  const row = document.createElement('div');
+  row.className = 'queue-song' + (playing ? ' now-song' : '');
+  const number = document.createElement('span');
+  number.className = 'queue-index';
+  if (playing) {
+    const bars = document.createElement('span');
+    bars.className = 'equalizer';
+    for (let i = 0; i < 3; i++) bars.append(document.createElement('span'));
+    number.append(bars);
+  } else number.textContent = String(index);
+  const art = document.createElement('img');
+  art.className = 'queue-cover';
+  art.alt = 'Miniatura';
+  if (thumbnail(track.videoId)) art.src = thumbnail(track.videoId);
+  const info = document.createElement('div');
+  info.className = 'song-meta';
+  const title = document.createElement('strong');
+  title.className = 'queue-title';
+  title.textContent = track.title || 'Canción de YouTube';
+  const author = document.createElement('small');
+  author.className = 'queue-author';
+  author.textContent = playing ? 'Reproduciendo ahora' : `Solicitada por ${track.addedByName || 'Pasajero'}`;
+  info.append(title, author);
+  const menu = document.createElement('details');
+  menu.className = 'row-menu';
+  const summary = document.createElement('summary');
+  summary.setAttribute('aria-label', 'Opciones de canción');
+  summary.textContent = '•••';
+  const menuContent = document.createElement('div');
+  menuContent.className = 'row-menu-actions';
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.textContent = 'Copiar enlace';
+  copyButton.addEventListener('click', async () => {
+    const id = track.videoId;
+    if (!thumbnail(id)) return toast('No hay enlace disponible.');
+    try {
+      await navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${id}`);
+      toast('Enlace copiado.');
+    } catch { toast('No se pudo copiar el enlace.'); }
+    menu.open = false;
+  });
+  menuContent.append(copyButton);
+  menu.append(summary, menuContent);
+  row.append(number, art, info, menu);
+  return row;
+}
+function renderSongs() {
+  const list = $('songList');
+  list.replaceChildren();
+  const queued = state.songs.filter(song => song.status === 'queued');
+  $('queueCount').textContent = `${queued.length} en espera`;
+  if (state.room?.currentVideoId) {
+    const playingSong = state.songs.find(song => song.id === state.room.currentSongId);
+    list.append(songRow({
+      videoId: state.room.currentVideoId,
+      title: state.room.currentTitle || playingSong?.title || 'Canción en reproducción',
+      addedByName: playingSong?.addedByName || 'Conductor'
+    }, 1, true));
+  }
+  queued.forEach((song, i) => list.append(songRow(song, i + 1 + (state.room?.currentVideoId ? 1 : 0))));
+  if (!list.children.length) {
+    const p = document.createElement('p');
+    p.className = 'muted empty';
+    p.textContent = 'La cola está vacía. ¡Agrega el primer tema!';
+    list.append(p);
+  }
+}
+function displayRoom() {
+  if (!state.room) return;
+  $('roomName').textContent = state.room.title || 'TAXI DJ';
+  $('currentSong').textContent = state.room.currentTitle || 'Esperando la primera canción';
+  $('currentDetail').textContent = state.room.currentVideoId
+    ? (state.room.isPaused ? 'En pausa · Suena en el taxi' : 'Sonando en el taxi')
+    : 'Tu música comienza aquí';
+  const playing = !!state.room.currentVideoId;
+  $('cover').hidden = !playing;
+  $('coverPlaceholder').hidden = playing;
+  if (playing) $('cover').src = thumbnail(state.room.currentVideoId);
+  const control = $('pauseResume');
+  control.disabled = !playing || !checkValid() || state.room.allowGuestControls !== true;
+  control.textContent = state.room.isPaused ? '▶' : '❚❚';
+  control.setAttribute('aria-label', state.room.isPaused ? 'Reanudar' : 'Pausar');
+  const vote = state.room.allowGuestVotes === true;
+  $('skipTrack').disabled = !playing || !checkValid() || (!vote && state.room.allowGuestControls !== true);
+  $('skipTrack').setAttribute('aria-label', vote ? 'Votar para saltar canción' : 'Siguiente canción');
+  $('voteProgress').textContent = playing && vote
+    ? `Votar para saltar · Votos: ${state.room.skipVoteCount || 0}/${state.room.skipVoteThreshold || 1}`
+    : 'El conductor controla la reproducción';
+  renderSongs();
+  tick();
+}
+function showEntryError(message) {
+  show('entry');
+  $('entryMessage').textContent = message;
+  $('retryButton').hidden = !qrRoom;
+}
+async function connectFromQr() {
+  if (state.joining || state.connected || state.ended || !state.uid || !state.db) return;
+  if (!qrRoom || !/^[A-Z2-9]{8}$/.test(qrRoom)) {
+    showEntryError('Escanea el código QR que te muestra tu conductor para ingresar directamente a su sala.');
+    return;
+  }
+  state.joining = true;
+  $('entryMessage').textContent = 'Ingresando automáticamente a la sala…';
+  $('retryButton').hidden = true;
+  show('entry');
+  try {
+    const roomRef = doc(state.db, 'rooms', qrRoom);
+    const room = await getDoc(roomRef);
+    if (!room.exists() || !room.data().active) throw new Error('Esta sala no existe o ya cerró.');
+    const guestRef = doc(state.db, 'rooms', qrRoom, 'guests', state.uid);
+    const previous = await getDoc(guestRef);
+    if (!previous.exists()) {
+      await setDoc(guestRef, {
+        uid: state.uid,
+        displayName: arrivalName(),
+        joinedAt: serverTimestamp(),
+        minutes: room.data().defaultMinutes,
+        extraMinutes: 0,
+        blocked: false,
+        left: false
+      });
+    } else {
+      const guest = previous.data();
+      if (guest.blocked || guest.left || (guest.minutes !== 0 && guest.joinedAt && Date.now() >= guest.joinedAt.toMillis() + (guest.minutes + (guest.extraMinutes || 0)) * 60000)) {
+        throw new Error('Tu sesión ya terminó. Pide al conductor una nueva invitación.');
+      }
+    }
+    cleanup();
+    state.roomId = qrRoom;
+    state.room = room.data();
+    state.connected = true;
+    state.unsubs.push(onSnapshot(roomRef, snapshot => {
+      if (!snapshot.exists()) return endSession('Sala no disponible', 'El conductor cerró esta sala.');
+      state.room = snapshot.data();
+      displayRoom();
+    }, fail));
+    state.unsubs.push(onSnapshot(guestRef, snapshot => {
+      if (!snapshot.exists()) return endSession('Sesión finalizada', 'Consulta al conductor.');
+      state.guest = snapshot.data();
+      displayRoom();
+    }, fail));
+    state.unsubs.push(onSnapshot(query(collection(state.db, 'rooms', qrRoom, 'songs'), orderBy('createdAt', 'asc')), snapshot => {
+      state.songs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      renderSongs();
+    }, fail));
+    state.clock = setInterval(tick, 1000);
+    show('guestPanel');
+    displayRoom();
+  } catch (error) {
+    console.error(error);
+    showEntryError(error?.message || 'No fue posible ingresar. Comprueba tu conexión.');
+  } finally {
+    state.joining = false;
+  }
+}
+function resultRow(video) {
+  const row = document.createElement('div');
+  row.className = 'result-song';
+  const art = document.createElement('img');
+  art.className = 'result-cover';
+  art.alt = 'Miniatura de YouTube';
+  art.src = thumbnail(video.videoId);
+  const meta = document.createElement('div');
+  meta.className = 'song-meta';
+  const title = document.createElement('strong');
+  title.textContent = video.title;
+  meta.append(title);
+  if (video.artist) {
+    const artist = document.createElement('small');
+    artist.textContent = video.artist;
+    meta.append(artist);
+  }
+  const actions = document.createElement('div');
+  actions.className = 'result-actions';
+  const playButton = document.createElement('button');
+  playButton.type = 'button';
+  playButton.className = 'primary';
+  playButton.textContent = '▶ Play';
+  playButton.addEventListener('click', () => requestVideo(video, true).catch(fail));
+  const queueButton = document.createElement('button');
+  queueButton.type = 'button';
+  queueButton.className = 'secondary';
+  queueButton.textContent = '+ Cola';
+  queueButton.addEventListener('click', () => requestVideo(video, false).catch(fail));
+  actions.append(playButton, queueButton);
+  row.append(art, meta, actions);
+  return row;
+}
+async function searchYouTube() {
+  const search = $('searchText').value.trim();
+  if (search.length < 2) return toast('Escribe el nombre de una canción.');
+  if (!youtubeReady) return toast('Falta configurar YouTube en youtube-config.js.');
+  const list = $('searchResults');
+  list.replaceChildren();
+  const wait = document.createElement('p');
+  wait.className = 'muted';
+  wait.textContent = 'Buscando canciones…';
+  list.append(wait);
+  const api = new URL('https://www.googleapis.com/youtube/v3/search');
+  for (const [k, v] of Object.entries({part:'snippet',type:'video',videoEmbeddable:'true',maxResults:'8',q:search,key:youtubeApiKey})) api.searchParams.set(k, v);
+  try {
+    const response = await fetch(api);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || 'Error de búsqueda de YouTube.');
+    list.replaceChildren();
+    for (const item of data.items || []) list.append(resultRow({videoId:item.id.videoId,title:item.snippet.title,artist:item.snippet.channelTitle}));
+    if (!data.items?.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted';
+      empty.textContent = 'No encontramos resultados. Prueba otra búsqueda.';
+      list.append(empty);
+    }
+  } catch (error) {
+    fail(error);
+    list.replaceChildren();
+  }
+}
+async function guestCommand(action, songId = '') {
+  if (!checkValid() || (action === 'vote_skip' ? state.room?.allowGuestVotes !== true : state.room?.allowGuestControls !== true)) {
+    throw new Error('El conductor no ha autorizado este control.');
+  }
+  await addDoc(collection(state.db, 'rooms', state.roomId, 'commands'), {
+    action, songId, uid: state.uid, processed: false, createdAt: serverTimestamp()
+  });
+}
+async function requestVideo(video, playNow) {
+  if (!checkValid() || !state.room?.allowRequests) throw new Error('No se permiten solicitudes en este momento.');
+  if (state.room.blockDuplicates !== false && state.songs.some(song => song.videoId === video.videoId && ['queued', 'playing'].includes(song.status))) {
+    throw new Error('Esta canción ya está en la cola o reproduciéndose.');
+  }
+  const songRef = await addDoc(collection(state.db, 'rooms', state.roomId, 'songs'), {
+    title: video.title.slice(0, 100),
+    url: `https://www.youtube.com/watch?v=${video.videoId}`,
+    videoId: video.videoId,
+    addedBy: state.uid,
+    addedByName: state.guest.displayName,
+    status: 'queued',
+    createdAt: serverTimestamp()
+  });
+  if (playNow) {
+    if (state.room.allowGuestControls !== true) return toast('Añadida a la cola. El conductor controla Play.');
+    await guestCommand('play', songRef.id);
+    toast('▶ Reproducción solicitada.');
+  } else toast('♫ Agregada a la cola.');
+}
+function idFromUrl(raw) {
+  try {
+    const url = new URL(raw.trim());
+    const host = url.hostname.replace(/^www\./, '').toLowerCase();
+    let id = '';
+    if (host === 'youtu.be') id = url.pathname.split('/')[1];
+    if (['youtube.com','m.youtube.com','music.youtube.com'].includes(host)) {
+      id = url.pathname === '/watch' ? url.searchParams.get('v') : url.pathname.split('/')[2];
+    }
+    return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? id : null;
+  } catch { return null; }
+}
+async function manualSong(event) {
+  event.preventDefault();
+  const videoId = idFromUrl($('manualUrl').value);
+  if (!videoId) return toast('Enlace de YouTube inválido.');
+  const title = $('manualTitle').value.trim();
+  if (title.length < 2) return toast('Escribe el título.');
+  await requestVideo({ videoId, title }, false);
+  $('manualUrl').value = '';
+  $('manualTitle').value = '';
+}
+$('showSearch').addEventListener('click', () => {
+  const panel = $('searchPanel');
+  panel.hidden = !panel.hidden;
+  $('showSearch').setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden) $('searchText').focus();
+});
+$('retryButton').addEventListener('click', () => connectFromQr().catch(fail));
+$('manualSongForm').addEventListener('submit', event => manualSong(event).catch(fail));
+$('searchButton').addEventListener('click', () => searchYouTube().catch(fail));
+$('searchText').addEventListener('keydown', event => {
+  if (event.key === 'Enter') { event.preventDefault(); searchYouTube().catch(fail); }
+});
+$('pauseResume').addEventListener('click', () => guestCommand(state.room?.isPaused ? 'resume' : 'pause').then(() => toast('Orden enviada al conductor.')).catch(fail));
+$('skipTrack').addEventListener('click', () => {
+  const vote = state.room?.allowGuestVotes === true;
+  const songId = vote ? (state.room?.currentSongId || '') : '';
+  if (vote && !songId) return toast('Todavía no hay música sonando.');
+  guestCommand(vote ? 'vote_skip' : 'next', songId)
+    .then(() => toast(vote ? 'Voto enviado. Cambiaremos de canción al alcanzar la mayoría.' : 'Siguiente canción solicitada.'))
+    .catch(fail);
+});
+$('leaveButton').addEventListener('click', () => endSession('Saliste de la sala', 'Tu tiempo continúa hasta que venza. Puedes volver mientras siga activo.'));
+$('restartButton').addEventListener('click', () => { state.ended = false; connectFromQr().catch(fail); });
+
+if (!isConfigured) showEntryError('La web requiere configurar Firebase para poder conectar.');
+else {
+  try {
+    const app = initializeApp(firebaseConfig);
+    state.auth = getAuth(app);
+    state.db = getFirestore(app);
+    onAuthStateChanged(state.auth, async user => {
+      if (user) {
+        state.uid = user.uid;
+        connectFromQr().catch(fail);
+        return;
+      }
+      try {
+        const credentials = await signInAnonymously(state.auth);
+        state.uid = credentials.user.uid;
+        connectFromQr().catch(fail);
+      } catch (error) { fail(error); showEntryError('No fue posible iniciar la conexión. Comprueba tu internet.'); }
+    });
+  } catch (error) { fail(error); showEntryError('No fue posible iniciar TAXI DJ.'); }
+}
