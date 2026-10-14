@@ -43,7 +43,10 @@
             <button class="transport" type="button" disabled title="La canción anterior solo puede controlarla el conductor" aria-label="Anterior (solo conductor)">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M19 5 8 12l11 7z"/></svg>
             </button>
-            <button id="pauseResume" class="transport play-button" type="button" disabled aria-label="Pausar o reanudar">❚❚</button>
+            <button id="pauseResume" class="transport play-button" type="button" disabled aria-label="Pausar">
+              <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="4.7" height="16" rx="1.4"/><rect x="13.3" y="4" width="4.7" height="16" rx="1.4"/></svg>
+              <svg class="resume-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.5v15L19 12z"/></svg>
+            </button>
             <button id="skipTrack" class="transport" type="button" disabled title="Siguiente canción o voto para saltar" aria-label="Siguiente canción o votar para saltar">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5v14M5 5l11 7-11 7z"/></svg>
             </button>
@@ -52,17 +55,22 @@
         </section>
 
         <section class="search-section" aria-label="Agregar temas">
-          <button id="showSearch" type="button" class="search-launch" aria-expanded="false" aria-controls="searchPanel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 5 5"/></svg><span>Agregar temas</span><span class="search-plus" aria-hidden="true">+</span></button>
-          <div id="searchPanel" class="search-panel" hidden>
-            <div class="searchrow"><input id="searchText" placeholder="Busca una canción o artista" maxlength="100" aria-label="Buscar canción o artista"><button id="searchButton" class="primary" type="button">Buscar</button></div>
-            <div id="searchResults" class="song-list search-results"><p class="muted">Busca música y agrégala a la cola.</p></div>
-            <details class="backup"><summary>Agregar canción mediante enlace</summary>
-              <form id="manualSongForm" class="form compact"><label for="manualUrl">Enlace de YouTube</label><input id="manualUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required><label for="manualTitle">Título</label><input id="manualTitle" maxlength="100" required><button class="secondary" type="submit">+ Agregar a la cola</button></form>
-            </details>
-          </div>
+          <button id="showSearch" type="button" class="search-launch" aria-expanded="false" aria-controls="searchPanel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 5 5"/></svg>
+            <span id="showSearchLabel">Agregar temas</span><span class="search-plus" id="searchIcon" aria-hidden="true">+</span>
+          </button>
         </section>
 
-        <section class="queue-section" aria-labelledby="queueTitle">
+        <section id="searchPanel" class="queue-section search-view" aria-labelledby="searchTitle" hidden>
+          <div class="section-line search-title-row"><h2 id="searchTitle">Buscar temas</h2><button id="closeSearch" class="back-to-queue" type="button">← Ver cola</button></div>
+          <div class="searchrow"><input id="searchText" type="search" placeholder="Canción o artista…" maxlength="100" aria-label="Buscar canción o artista" autocomplete="off"><button id="searchButton" class="primary" type="button">Buscar</button></div>
+          <div id="searchResults" class="song-list search-results" aria-live="polite"><p class="muted empty">Busca música para agregarla a la cola.</p></div>
+          <details class="backup"><summary>Agregar canción mediante enlace</summary>
+            <form id="manualSongForm" class="form compact"><label for="manualUrl">Enlace de YouTube</label><input id="manualUrl" type="url" placeholder="https://www.youtube.com/watch?v=…" required><label for="manualTitle">Título</label><input id="manualTitle" maxlength="100" required><button class="secondary" type="submit">+ Agregar a la cola</button></form>
+          </details>
+        </section>
+
+        <section id="queueView" class="queue-section" aria-labelledby="queueTitle">
           <div class="section-line"><h2 id="queueTitle">En cola</h2><span id="queueCount" class="queue-counter">0 en espera</span></div>
           <div id="songList" class="queue-list"><p class="muted empty">La cola está vacía.</p></div>
         </section>

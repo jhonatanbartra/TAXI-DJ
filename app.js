@@ -170,7 +170,7 @@ function displayRoom() {
   if (playing) $('cover').src = thumbnail(state.room.currentVideoId);
   const control = $('pauseResume');
   control.disabled = !playing || !checkValid() || state.room.allowGuestControls !== true;
-  control.textContent = state.room.isPaused ? '▶' : '❚❚';
+  control.classList.toggle('is-paused', Boolean(state.room.isPaused));
   control.setAttribute('aria-label', state.room.isPaused ? 'Reanudar' : 'Pausar');
   const vote = state.room.allowGuestVotes === true;
   $('skipTrack').disabled = !playing || !checkValid() || (!vote && state.room.allowGuestControls !== true);
@@ -358,12 +358,18 @@ async function manualSong(event) {
   $('manualUrl').value = '';
   $('manualTitle').value = '';
 }
-$('showSearch').addEventListener('click', () => {
-  const panel = $('searchPanel');
-  panel.hidden = !panel.hidden;
-  $('showSearch').setAttribute('aria-expanded', String(!panel.hidden));
-  if (!panel.hidden) $('searchText').focus();
-});
+// La parte inferior alterna entre cola y resultados sin aumentar la altura de la pantalla.
+function setSearchVisible(open) {
+  $('searchPanel').hidden = !open;
+  $('queueView').hidden = open;
+  $('showSearch').setAttribute('aria-expanded', String(open));
+  $('showSearchLabel').textContent = open ? 'Volver a la cola' : 'Agregar temas';
+  $('searchIcon').textContent = open ? '←' : '+';
+  if (open) $('searchText').focus();
+  else $('showSearch').focus();
+}
+$('showSearch').addEventListener('click', () => setSearchVisible($('searchPanel').hidden));
+$('closeSearch').addEventListener('click', () => setSearchVisible(false));
 $('retryButton').addEventListener('click', () => connectFromQr().catch(fail));
 $('manualSongForm').addEventListener('submit', event => manualSong(event).catch(fail));
 $('searchButton').addEventListener('click', () => searchYouTube().catch(fail));
