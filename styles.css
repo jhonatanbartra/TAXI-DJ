@@ -9,3 +9,8 @@
 @media(max-width:420px){.result-cover{width:58px;height:41px}.song{gap:6px}.result-actions{flex-direction:column}}
 
 .backup{margin-top:14px;color:var(--muted);font-size:12px}.backup summary{cursor:pointer}.backup form{padding-top:14px}.backup input{font-size:13px}
+
+/* Funciones colaborativas TAXI DJ V3.2 */
+.divider{border:0;border-top:1px solid rgba(150,170,192,.22);margin:20px 0}
+#voteProgress,#voteCount{font-weight:650;letter-spacing:.02em}
+#playlistUrl{min-width:0}
