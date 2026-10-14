@@ -7,7 +7,7 @@ import { youtubeApiKey, youtubeReady } from './youtube-config.js';
 const $ = id => document.getElementById(id);
 const state = {
   auth: null, db: null, uid: null, roomId: null, room: null, guest: null,
-  unsubs: [], songs: [], clock: null, joining: false, connected: false, ended: false
+  unsubs: [], songs: [], clock: null, joining: false, connected: false, ended: false, reordering: false
 };
 let toastTimer;
 
@@ -88,17 +88,30 @@ function tick() {
 function thumbnail(id) {
   return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : '';
 }
-function songRow(track, index, playing = false) {
+function orderedQueued() {
+  const queued = state.songs.filter(song => song.status === 'queued');
+  const order = Array.isArray(state.room?.queueOrder) ? state.room.queueOrder : [];
+  const positions = new Map(order.map((id, i) => [id, i]));
+  // Los temas nuevos que aún no aparecen en queueOrder mantienen el orden de llegada.
+  return queued.sort((a, b) => {
+    const ai = positions.has(a.id) ? positions.get(a.id) : Infinity;
+    const bi = positions.has(b.id) ? positions.get(b.id) : Infinity;
+    return ai - bi;
+  });
+}
+function songRow(track, index) {
   const row = document.createElement('div');
-  row.className = 'queue-song' + (playing ? ' now-song' : '');
-  const number = document.createElement('span');
-  number.className = 'queue-index';
-  if (playing) {
-    const bars = document.createElement('span');
-    bars.className = 'equalizer';
-    for (let i = 0; i < 3; i++) bars.append(document.createElement('span'));
-    number.append(bars);
-  } else number.textContent = String(index);
+  row.className = 'queue-song';
+  row.dataset.songId = track.id;
+  const handle = document.createElement('button');
+  handle.type = 'button';
+  handle.className = 'drag-handle';
+  handle.textContent = '⠿';
+  const canReorder = state.room?.allowGuestControls === true && checkValid();
+  handle.disabled = !canReorder;
+  handle.title = canReorder ? 'Arrastra para reordenar (o usa flechas del teclado)' : 'Solo el conductor puede autorizar el cambio de orden';
+  handle.setAttribute('aria-label', `Cambiar orden de ${track.title}. Posición ${index}`);
+  if (canReorder) setupDragHandle(handle, row);
   const art = document.createElement('img');
   art.className = 'queue-cover';
   art.alt = 'Miniatura';
@@ -110,7 +123,7 @@ function songRow(track, index, playing = false) {
   title.textContent = track.title || 'Canción de YouTube';
   const author = document.createElement('small');
   author.className = 'queue-author';
-  author.textContent = playing ? 'Reproduciendo ahora' : `Solicitada por ${track.addedByName || 'Pasajero'}`;
+  author.textContent = `Solicitada por ${track.addedByName || 'Pasajero'}`;
   info.append(title, author);
   const menu = document.createElement('details');
   menu.className = 'row-menu';
@@ -123,38 +136,108 @@ function songRow(track, index, playing = false) {
   copyButton.type = 'button';
   copyButton.textContent = 'Copiar enlace';
   copyButton.addEventListener('click', async () => {
-    const id = track.videoId;
-    if (!thumbnail(id)) return toast('No hay enlace disponible.');
     try {
-      await navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${id}`);
+      await navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${track.videoId}`);
       toast('Enlace copiado.');
     } catch { toast('No se pudo copiar el enlace.'); }
     menu.open = false;
   });
   menuContent.append(copyButton);
   menu.append(summary, menuContent);
-  row.append(number, art, info, menu);
+  row.append(handle, art, info, menu);
   return row;
+}
+// Reordenar en el navegador no basta: se envía una orden validada al APK del conductor.
+// El conductor aplica el orden a Firestore y lo utiliza al pasar a la siguiente canción.
+async function moveInQueue(fromId, targetId, direction) {
+  if (state.reordering || fromId === targetId) return;
+  if (!/^[a-zA-Z0-9]{20}$/.test(fromId) || !/^[a-zA-Z0-9]{20}$/.test(targetId)) return;
+  state.reordering = true;
+  try {
+    await guestCommand('reorder', `${fromId}~${targetId}~${direction}`);
+    toast('Orden solicitado. El conductor lo aplicará a la cola.');
+  } catch (e) { fail(e); }
+  finally {
+    state.reordering = false;
+    // Firestore notificará el orden confirmado por el administrador.
+    setTimeout(renderSongs, 450);
+  }
+}
+function setupDragHandle(handle, row) {
+  handle.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || state.reordering) return;
+    event.preventDefault();
+    const list = $('songList');
+    const initial = Array.from(list.querySelectorAll('[data-song-id]')).map(x => x.dataset.songId);
+    row.classList.add('dragging');
+    const pointerId = event.pointerId;
+    let moved = false;
+    const move = e => {
+      if (e.pointerId !== pointerId) return;
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.queue-song[data-song-id]');
+      if (!target || target === row || !list.contains(target)) return;
+      moved = true;
+      const targetMiddle = target.getBoundingClientRect().top + target.getBoundingClientRect().height / 2;
+      list.insertBefore(row, e.clientY < targetMiddle ? target : target.nextSibling);
+    };
+    const finish = e => {
+      if (e.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+      row.classList.remove('dragging');
+      if (!moved) return;
+      const ids = Array.from(list.querySelectorAll('[data-song-id]')).map(x => x.dataset.songId);
+      if (ids.join('|') === initial.join('|')) return;
+      const index = ids.indexOf(row.dataset.songId);
+      const target = ids[index + 1] || ids[index - 1];
+      const direction = ids[index + 1] ? 'b' : 'a';
+      moveInQueue(row.dataset.songId, target, direction).catch(fail);
+    };
+    const cancel = e => {
+      if (e.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+      row.classList.remove('dragging');
+      renderSongs();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', cancel);
+  });
+  handle.addEventListener('keydown', event => {
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const ids = Array.from($('songList').querySelectorAll('[data-song-id]')).map(x => x.dataset.songId);
+    const index = ids.indexOf(row.dataset.songId);
+    const destination = index + (event.key === 'ArrowUp' ? -1 : 1);
+    if (destination < 0 || destination >= ids.length) return;
+    moveInQueue(row.dataset.songId, ids[destination], event.key === 'ArrowUp' ? 'b' : 'a').catch(fail);
+  });
 }
 function renderSongs() {
   const list = $('songList');
+  // No interrumpir el movimiento mientras el pasajero arrastra una canción.
+  if (list.querySelector('.dragging')) return;
   list.replaceChildren();
-  const queued = state.songs.filter(song => song.status === 'queued');
+  const queued = orderedQueued();
   $('queueCount').textContent = `${queued.length} en espera`;
-  if (state.room?.currentVideoId) {
-    const playingSong = state.songs.find(song => song.id === state.room.currentSongId);
-    list.append(songRow({
-      videoId: state.room.currentVideoId,
-      title: state.room.currentTitle || playingSong?.title || 'Canción en reproducción',
-      addedByName: playingSong?.addedByName || 'Conductor'
-    }, 1, true));
-  }
-  queued.forEach((song, i) => list.append(songRow(song, i + 1 + (state.room?.currentVideoId ? 1 : 0))));
+  $('queueHint').textContent = state.room?.allowGuestControls === true
+    ? '⠿ Arrastra para ordenar hasta 5 próximos temas. El conductor mantiene el control.'
+    : 'El conductor controla el orden de reproducción.';
+  queued.slice(0, 5).forEach((song, i) => list.append(songRow(song, i + 1)));
   if (!list.children.length) {
     const p = document.createElement('p');
     p.className = 'muted empty';
     p.textContent = 'La cola está vacía. ¡Agrega el primer tema!';
     list.append(p);
+  }
+  if (queued.length > 5) {
+    const note = document.createElement('p');
+    note.className = 'queue-extra';
+    note.textContent = `+ ${queued.length - 5} tema(s) en espera después de estos cinco.`;
+    list.append(note);
   }
 }
 function displayRoom() {
@@ -170,7 +253,7 @@ function displayRoom() {
   if (playing) $('cover').src = thumbnail(state.room.currentVideoId);
   const control = $('pauseResume');
   control.disabled = !playing || !checkValid() || state.room.allowGuestControls !== true;
-  control.classList.toggle('is-paused', Boolean(state.room.isPaused));
+  control.textContent = state.room.isPaused ? '▶' : '❚❚';
   control.setAttribute('aria-label', state.room.isPaused ? 'Reanudar' : 'Pausar');
   const vote = state.room.allowGuestVotes === true;
   $('skipTrack').disabled = !playing || !checkValid() || (!vote && state.room.allowGuestControls !== true);
@@ -265,17 +348,12 @@ function resultRow(video) {
   }
   const actions = document.createElement('div');
   actions.className = 'result-actions';
-  const playButton = document.createElement('button');
-  playButton.type = 'button';
-  playButton.className = 'primary';
-  playButton.textContent = '▶ Play';
-  playButton.addEventListener('click', () => requestVideo(video, true).catch(fail));
   const queueButton = document.createElement('button');
   queueButton.type = 'button';
   queueButton.className = 'secondary';
   queueButton.textContent = '+ Cola';
   queueButton.addEventListener('click', () => requestVideo(video, false).catch(fail));
-  actions.append(playButton, queueButton);
+  actions.append(queueButton);
   row.append(art, meta, actions);
   return row;
 }
@@ -358,18 +436,15 @@ async function manualSong(event) {
   $('manualUrl').value = '';
   $('manualTitle').value = '';
 }
-// La parte inferior alterna entre cola y resultados sin aumentar la altura de la pantalla.
-function setSearchVisible(open) {
-  $('searchPanel').hidden = !open;
-  $('queueView').hidden = open;
-  $('showSearch').setAttribute('aria-expanded', String(open));
-  $('showSearchLabel').textContent = open ? 'Volver a la cola' : 'Agregar temas';
-  $('searchIcon').textContent = open ? '←' : '+';
-  if (open) $('searchText').focus();
-  else $('showSearch').focus();
-}
-$('showSearch').addEventListener('click', () => setSearchVisible($('searchPanel').hidden));
-$('closeSearch').addEventListener('click', () => setSearchVisible(false));
+$('showSearch').addEventListener('click', () => {
+  const panel = $('searchPanel');
+  panel.hidden = !panel.hidden;
+  $('showSearch').setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden) {
+    $('searchText').focus({preventScroll:true});
+    requestAnimationFrame(() => panel.scrollIntoView({block:'nearest',behavior:'smooth'}));
+  }
+});
 $('retryButton').addEventListener('click', () => connectFromQr().catch(fail));
 $('manualSongForm').addEventListener('submit', event => manualSong(event).catch(fail));
 $('searchButton').addEventListener('click', () => searchYouTube().catch(fail));
